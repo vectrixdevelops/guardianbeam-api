@@ -9,7 +9,6 @@
   "author": "Connor Hartley <vectrixu@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "axios": "^0.18.0",
     "body-parser": "^1.18.2",
     "express": "^4.16.3",
     "express-jwt": "^5.3.1",
@@ -17,8 +16,7 @@
     "moment": "^2.21.0",
     "passport": "^0.4.0",
     "passport-http-bearer": "^1.0.1",
-    "passport-local": "^1.0.0",
-    "sequelize": "^4.37.1",
-    "slack": "^11.0.0"
+    "passport-slack": "git+https://github.com/connorhartley/passport-slack.git",
+    "sequelize": "^4.37.1"
   }
 }

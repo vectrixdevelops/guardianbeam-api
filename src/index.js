@@ -3,11 +3,10 @@
 var express    = require('express'),
     jwt        = require('jsonwebtoken'),
     moment     = require('moment'),
-    axios      = require('axios'),
     passport   = require('passport'),
     bodyParser = require('body-parser'),
     Sequelize  = require('sequelize'),
-    LocalStrategy = require('passport-local').Strategy,
+    SlackStrategy = require('passport-slack').Strategy,
     BearerStrategy = require('passport-http-bearer').Strategy;
 
 // # ----------------------------------- #
@@ -40,7 +39,7 @@ database
   });
 
 var Player = database.define('player', {
-  user_id: { type: Sequelize.UUID, allowNull: false },
+  client_id: { type: Sequelize.STRING, allowNull: false, primaryKey: true },
   active: { type: Sequelize.BOOLEAN, allowNull: false },
   active_server: { type: Sequelize.STRING, allowNull: false }
 });
@@ -78,15 +77,32 @@ Tag.belongsTo(ReportTag, { as: 'ReportTag' });
 //             AUTH STRATEGY
 // # ----------------------------------- #
 
-passport.use(new LocalStrategy(function (token, cb) {
-  // Verify user here.
+var client_id     = '',
+    client_secret = '',
+    scope         = 'users.identity',
+    redirect_uri  = '',
+    state         = '',
+    team          = '';
+
+passport.use(new SlackStrategy({
+  clientID: client_id,
+  clientSecret: client_secret
+}, (accessToken, refreshToken, profile, done) => {
+  done(null, profile);
 }));
 
 passport.use(new BearerStrategy(function (token, cb) {
   jwt.verify(token, 'secret', function (err, decoded) {
     if (err) return cb(err);
-    // indentify user
-    cb(null, true);
+
+    database.query(
+      'SELECT * FROM player WHERE client_id = ?',
+      { raw: true, replacements: [ decoded.id ] }
+    ).then(players => {
+      return cb(null, players[0] ? players[0] : false);
+    }).catch(err => {
+      return cb(null, false);
+    });
   });
 }));
 
@@ -94,12 +110,7 @@ passport.use(new BearerStrategy(function (token, cb) {
 //              HTTP SERVER
 // # ----------------------------------- #
 
-var client_id     = '',
-    client_secret = '',
-    scope         = 'users.identity',
-    redirect_uri  = '',
-    state         = '',
-    team          = '';
+var secret = 'sOmE SeCrEt'
 
 var app = express();
 
@@ -108,24 +119,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(passport.initialize());
 
-app.post('/slack/authorize', function (req, res, next) {
-  res.status(301).redirect('https://slack.com/oauth/authorize?client_id=' + client_id + '&scope=' + scope + '&redirect_uri=' + redirect_uri + '&state=' + state + '&team=' + team);
-});
-
-app.post('/slack/oauth', function (req, res, next) {
-  if (req.body.state !== state) res.status(401).send('Incorrect state recieved. (401)');
-
-  if (res.body.code != null) {
-    axios.get('https://slack.com/api/oauth.access?client_id=' + client_id + '&client_secret=' + client_secret + '&code=' + req.body.code)
-      .then(function (response) {
-        axios.post('https://slack.com/api/auth.test?access_token=' + response.body.access_token + '')
-      })
-      .catch(function (error) {
-
-      });
-  }
-});
-
 app.get('/logout', function (req, res, next) {
   // Passport
 });
@@ -133,3 +126,12 @@ app.get('/logout', function (req, res, next) {
 // # ----------------------------------- #
 //           SLACK INTEGRATION
 // # ----------------------------------- #
+
+app.post('/auth/slack', passport.authorize('slack'));
+
+app.post('/auth/slack/callback',
+  passport.authorize('slack', { failureRedirect: '/login' }),
+  (req, res) => {
+    return res.json({ token: jwt.sign({ id: req.client_id }, secret) });
+  }
+);
