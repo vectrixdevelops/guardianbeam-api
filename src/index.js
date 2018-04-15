@@ -39,7 +39,7 @@ database
   });
 
 var Player = database.define('player', {
-  client_id: { type: Sequelize.STRING, allowNull: false, primaryKey: true },
+  user_id: { type: Sequelize.STRING, allowNull: false, primaryKey: true },
   active: { type: Sequelize.BOOLEAN, allowNull: false },
   active_server: { type: Sequelize.STRING, allowNull: false }
 });
@@ -77,12 +77,10 @@ Tag.belongsTo(ReportTag, { as: 'ReportTag' });
 //             AUTH STRATEGY
 // # ----------------------------------- #
 
-var client_id     = '',
-    client_secret = '',
+var client_id     = process.env.CLIENT_ID,
+    client_secret = process.env.CLIENT_SECRET,
     scope         = 'users.identity',
-    redirect_uri  = '',
-    state         = '',
-    team          = '';
+    team          = process.env.TEAM_ID;
 
 passport.use(new SlackStrategy({
   clientID: client_id,
@@ -96,7 +94,7 @@ passport.use(new BearerStrategy(function (token, cb) {
     if (err) return cb(err);
 
     database.query(
-      'SELECT * FROM player WHERE client_id = ?',
+      'SELECT * FROM player WHERE user_id = ?',
       { raw: true, replacements: [ decoded.id ] }
     ).then(players => {
       return cb(null, players[0] ? players[0] : false);
@@ -132,6 +130,24 @@ app.post('/auth/slack', passport.authorize('slack'));
 app.post('/auth/slack/callback',
   passport.authorize('slack', { failureRedirect: '/login' }),
   (req, res) => {
-    return res.json({ token: jwt.sign({ id: req.client_id }, secret) });
+    return res.json({ token: jwt.sign({ id: req.id, displayName: req.displayName }, secret) });
   }
 );
+
+app.all('*', (req, res, next) => {
+  passport.authenticate('bearer', (err, user, info) => {
+    if (err) return next(err);
+    if (user) {
+      req.id = user.id;
+      return next();
+    } else {
+      return res.status(401).json({ status: 'error', code: 'unauthorized' });
+    }
+  })(req, res, next);
+});
+
+app.get('/reports', (req, res) => {
+  return res.json({
+    status: 'ok'
+  });
+});
