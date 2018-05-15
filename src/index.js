@@ -38,40 +38,38 @@ database
     console.error('database: connection failed', err)
   });
 
-var Player = database.define('player', {
-  user_id: { type: Sequelize.STRING, allowNull: false, primaryKey: true },
+var User = database.define('user', {
+  id: { type: Sequelize.STRING, allowNull: false, primaryKey: true },
   active: { type: Sequelize.BOOLEAN, allowNull: false },
   active_server: { type: Sequelize.STRING, allowNull: false }
 });
 
-var Report = database.define('report', {
-  type: { type: Sequelize.INTEGER, allowNull: false, primaryKey: true },
-  createdAt: { Sequelize.DATE, allowNull: false, primaryKey: true },
+var Ticket = database.define('ticket', {
+  id: { type: Sequelize.INTEGER, allowNull: false, primaryKey: true, autoIncrement: true },
+  type: { type: Sequelize.INTEGER, allowNull: false },
+  createdAt: { type: Sequelize.DATE, allowNull: false },
   priority: { type: Sequelize.INTEGER, allowNull: false },
-  source_server: { type: Sequelize.STRING, allowNull: false },
   target_server: { type: Sequelize.STRING, allowNull: false }
 });
 
-var ReportTag = database.define('report_tag', {
+var TicketLabels = database.define('ticket_labels', {
   reason: { type: Sequelize.STRING, allowNull: true }
 });
 
-var Tag = database.define('tag', {
-  name: { type: Sequelize.STRING, allowNull: false },
+var Label = database.define('label', {
+  tag_id: { type: Sequelize.INTEGER, allowNull: false, primaryKey: true, autoIncrement: true },
+  name: { type: Sequelize.STRING, allowNull: false, primaryKey:  },
   priority: { type: Sequelize.INTEGER, allowNull: false }
 });
 
-Player.hasMany(Report, { as: 'TargetedReports', foreignKey: 'target_id' });
-Player.hasMany(Report, { as: 'IssuedReports', foreignKey: 'issuer_id' });
+User.belongsToMany(Ticket, { as: 'IssuedTicket', through: 'user_tickets', foreignKey: 'source_id' })
+Ticket.belongsToMany(User, { as: 'TicketSource', through: 'user_tickets', foreignKey: 'ticket_id' })
 
-Report.belongsTo(Player, { as: 'TargetPlayer', foreignKey: 'target_id', primaryKey: true });
-Report.belongsTo(Player, { as: 'SourcePlayer', foreignKey: 'issuer_id', primaryKey: true });
-Report.belongsTo(ReportTag, { as: 'ReportTag' });
+User.belongsToMany(Ticket, { as: 'TicketTarget', foreignKey: 'target_id' })
+Ticket.hasOne(User, { as: 'TargetUser', foreignKey: 'target_id' })
 
-ReportTag.hasMany(Report, { as: 'Reports' });
-ReportTag.hasMany(Tag, { as: 'Tags' });
-
-Tag.belongsTo(ReportTag, { as: 'ReportTag' });
+Label.belongsToMany(Ticket, { as: 'Ticket', through: 'ticket_labels', foreignKey: 'tag_id' })
+Ticket.belongsToMany(Labels, { as: 'Label', through: 'ticket_labels', foreignKey: 'ticket_id' })
 
 // # ----------------------------------- #
 //             AUTH STRATEGY
@@ -93,16 +91,67 @@ passport.use(new BearerStrategy(function (token, cb) {
   jwt.verify(token, 'secret', function (err, decoded) {
     if (err) return cb(err);
 
-    database.query(
-      'SELECT * FROM player WHERE user_id = ?',
-      { raw: true, replacements: [ decoded.id ] }
-    ).then(players => {
+    Player.findAll({
+      where: {
+        id: decoded.id
+      }
+    }).then(players => {
       return cb(null, players[0] ? players[0] : false);
     }).catch(err => {
       return cb(null, false);
     });
   });
 }));
+
+// # ----------------------------------- #
+//             CORE FUNCTIONS
+// # ----------------------------------- #
+
+var setPlayer = ({ user_id, active, active_server }) => {
+  User.findOrCreate({ where: { id: user_id }, defaults: {
+      active: active,
+      active_server: active_server
+    }
+  }).spread((user, created) => {
+    if (created) return;
+    return user.update({
+      active: active,
+      active_server: active_server
+    })
+  }).catch(err => {
+    console.error(err);
+  })
+}
+
+var addTicket = ({ target_id, issuer_id, type, priority, source_server, target_server }) => {
+  Ticket.findOrCreate({ where: { target_id: target_id, type: type, createdAt: { [Op.lt]: new Date(new Date() - 0.5 * 60 * 60 * 1000) } }, defaults: {
+      createdAt: new Date(),
+      priority: priority,
+      source_server: source_server,
+      target_server: target_server
+    }
+  }).spread((ticket, created) => {
+    // Set Player (In case they dont exist)
+    if (created) {
+      setPlayer({ user_id: target_id, active: true, active_server: target_server });
+
+      User.findOne({ where: { id: target_id } }).then(user => {
+        ticket.setTargetUser(user);
+      })
+    }
+
+    setPlayer({ user_id: issuer_id, active: true, })
+
+    User.findOne({ where: { id: issuer_id } }).then(user => {
+      ticket.addTicketSource(user);
+    })
+  })
+}
+
+var addTicketLabel = ({ target_id, issuer_id, type, tag_id }) => {
+
+}
+
 
 // # ----------------------------------- #
 //              HTTP SERVER
@@ -146,7 +195,36 @@ app.all('*', (req, res, next) => {
   })(req, res, next);
 });
 
-app.get('/reports', (req, res) => {
+// # ----------------------------------- #
+//              EXPRESS APP
+// # ----------------------------------- #
+
+app.post('/report/create', (req, res) => {
+  const type = req.params.type,
+        issuer = req.params.issuer,
+        reported = req.params.reported,
+        beforeDate = req.params.beforeDate,
+        afterDate = req.params.afterDate,
+        targetServer = req.params.targetServer;
+
+
+
+
+  return res.json({
+
+  });
+})
+
+app.get('/report/list', (req, res) => {
+  const type = req.params.type,
+        issuer = req.params.issuer,
+        reported = req.params.reported,
+        beforeDate = req.params.beforeDate,
+        afterDate = req.params.afterDate,
+        targetServer = req.params.targetServer;
+
+
+
   return res.json({
     status: 'ok'
   });
