@@ -47,7 +47,6 @@ var User = database.define('user', {
 var Ticket = database.define('ticket', {
   id: { type: Sequelize.INTEGER, allowNull: false, primaryKey: true, autoIncrement: true },
   type: { type: Sequelize.INTEGER, allowNull: false },
-  createdAt: { type: Sequelize.DATE, allowNull: false },
   priority: { type: Sequelize.INTEGER, allowNull: false },
   target_server: { type: Sequelize.STRING, allowNull: false }
 });
@@ -107,8 +106,8 @@ passport.use(new BearerStrategy(function (token, cb) {
 //             CORE FUNCTIONS
 // # ----------------------------------- #
 
-var setPlayer = ({ user_id, active, active_server }) => {
-  User.findOrCreate({ where: { id: user_id }, defaults: {
+var setUser = ({ user_id, active, active_server }) => {
+  return User.findOrCreate({ where: { id: user_id }, defaults: {
       active: active,
       active_server: active_server
     }
@@ -120,37 +119,63 @@ var setPlayer = ({ user_id, active, active_server }) => {
     })
   }).catch(err => {
     console.error(err);
-  })
-}
+  });
+};
 
-var addTicket = ({ target_id, issuer_id, type, priority, source_server, target_server }) => {
-  Ticket.findOrCreate({ where: { target_id: target_id, type: type, createdAt: { [Op.lt]: new Date(new Date() - 0.5 * 60 * 60 * 1000) } }, defaults: {
-      createdAt: new Date(),
+var addTicket = ({ target_id, issuer_id, type, priority, target_server }) => {
+  return Ticket.findOrCreate({ where: { target_id: target_id, type: type, createdAt: { [Op.lt]: new Date(new Date() - 0.5 * 60 * 60 * 1000) } }, defaults: {
       priority: priority,
-      source_server: source_server,
       target_server: target_server
     }
   }).spread((ticket, created) => {
-    // Set Player (In case they dont exist)
     if (created) {
-      setPlayer({ user_id: target_id, active: true, active_server: target_server });
+      setUser({ user_id: target_id, active: true, active_server: target_server });
 
       User.findOne({ where: { id: target_id } }).then(user => {
         ticket.setTargetUser(user);
       })
     }
 
-    setPlayer({ user_id: issuer_id, active: true, })
+    setUser({ user_id: issuer_id, active: true, })
 
     User.findOne({ where: { id: issuer_id } }).then(user => {
       ticket.addTicketSource(user);
     })
+  });
+};
+
+var addLabel = ({ ticket_id, tag_id, name, priority, reason }) => {
+  return Label.findOrCreate({ where: { tag_id: tag_id  }, defaults: {
+      name: name,
+      priority: priority
+    }
+  }).spread((label, created) => {
+    return Ticket.findOne({ where: { ticket_id: ticket_id } }).then(ticket => {
+      ticket.addLabel(label, { through: { reason: reason }});
+    })
+  });
+};
+
+// GETTERS
+
+var getUser = ({ target_id }) => {
+  return User.findOne({ where: { id: issuer_id } });
+};
+
+var getUserTickets = (index, amount, { target_id, type, start_date, end_date }) => {
+  getUser({ target_id: target_id }).then(user => {
+    return user.getTicketTargets({ where: {
+        type: type,
+        createdAt: {
+          [Op.lt]: new Date(end_date),
+          [Op.gt]: new Date(start_date)
+        }
+      },
+      offset: index,
+      limit: amount
+    })
   })
-}
-
-var addTicketLabel = ({ target_id, issuer_id, type, tag_id }) => {
-
-}
+};
 
 
 // # ----------------------------------- #
@@ -199,20 +224,36 @@ app.all('*', (req, res, next) => {
 //              EXPRESS APP
 // # ----------------------------------- #
 
+app.post('/user/update', (req, res) => {
+  setUser({
+    user_id: req.params.user_id,
+    active: req.params.active,
+    active_server: req.params.active_server
+  }).then(() => {
+    res.json({
+      status: 'ok'
+    })
+  }).catch(() => {
+    res.json({
+      status: 'error'
+    })
+  })
+});
+
 app.post('/report/create', (req, res) => {
-  const type = req.params.type,
-        issuer = req.params.issuer,
-        reported = req.params.reported,
-        beforeDate = req.params.beforeDate,
-        afterDate = req.params.afterDate,
-        targetServer = req.params.targetServer;
-
-
-
-
-  return res.json({
-
-  });
+  addTicket({
+    target_id: req.params.target_id,
+    issuer_id: req.params.issuer_id,
+    type: req.params.type,
+    priority: req.params.priority,
+    target_server: req.params.
+  }).then(() => {
+    res.json({
+      status: 'ok'
+    })
+  }).catch(() => {
+    status: 'error'
+  })
 })
 
 app.get('/report/list', (req, res) => {
