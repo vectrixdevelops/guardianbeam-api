@@ -57,18 +57,18 @@ var TicketLabels = database.define('ticket_labels', {
 
 var Label = database.define('label', {
   tag_id: { type: Sequelize.INTEGER, allowNull: false, primaryKey: true, autoIncrement: true },
-  name: { type: Sequelize.STRING, allowNull: false, primaryKey:  },
+  name: { type: Sequelize.STRING, allowNull: false },
   priority: { type: Sequelize.INTEGER, allowNull: false }
 });
 
-User.belongsToMany(Ticket, { as: 'IssuedTicket', through: 'user_tickets', foreignKey: 'source_id' })
-Ticket.belongsToMany(User, { as: 'TicketSource', through: 'user_tickets', foreignKey: 'ticket_id' })
+User.belongsToMany(Ticket, { as: 'IssuedTicket', through: 'issued_tickets', foreignKey: 'source_id' })
+Ticket.belongsToMany(User, { as: 'TicketSource', through: 'issued_tickets', foreignKey: 'ticket_id' })
 
-User.belongsToMany(Ticket, { as: 'TicketTarget', foreignKey: 'target_id' })
-Ticket.hasOne(User, { as: 'TargetUser', foreignKey: 'target_id' })
+User.belongsToMany(Ticket, { as: 'TicketTarget', through: 'target_tickets', foreignKey: 'target_id' })
+Ticket.hasOne(User, { as: 'TargetUser', through: 'target_tickets', foreignKey: 'target_id' })
 
 Label.belongsToMany(Ticket, { as: 'Ticket', through: 'ticket_labels', foreignKey: 'tag_id' })
-Ticket.belongsToMany(Labels, { as: 'Label', through: 'ticket_labels', foreignKey: 'ticket_id' })
+Ticket.belongsToMany(Label, { as: 'Label', through: 'ticket_labels', foreignKey: 'ticket_id' })
 
 // # ----------------------------------- #
 //             AUTH STRATEGY
@@ -162,19 +162,24 @@ var getUser = ({ target_id }) => {
   return User.findOne({ where: { id: issuer_id } });
 };
 
-var getUserTickets = (index, amount, { target_id, type, start_date, end_date }) => {
+var getUserTickets = (index, amount, { target_id, type, start_date, end_date, start_priority, end_priority, target_server }) => {
   getUser({ target_id: target_id }).then(user => {
     return user.getTicketTargets({ where: {
         type: type,
         createdAt: {
           [Op.lt]: new Date(end_date),
           [Op.gt]: new Date(start_date)
-        }
+        },
+        priority: {
+          [Op.lt]: new Date(end_priority),
+          [Op.gt]: new Date(start_date)
+        },
+        target_server: target_server
       },
       offset: index,
       limit: amount
     })
-  })
+  });
 };
 
 
@@ -246,27 +251,35 @@ app.post('/report/create', (req, res) => {
     issuer_id: req.params.issuer_id,
     type: req.params.type,
     priority: req.params.priority,
-    target_server: req.params.
+    target_server: req.params.target_server
   }).then(() => {
     res.json({
       status: 'ok'
     })
   }).catch(() => {
-    status: 'error'
+    res.json({
+      status: 'error'
+    })
   })
 })
 
 app.get('/report/list', (req, res) => {
-  const type = req.params.type,
-        issuer = req.params.issuer,
-        reported = req.params.reported,
-        beforeDate = req.params.beforeDate,
-        afterDate = req.params.afterDate,
-        targetServer = req.params.targetServer;
-
-
-
-  return res.json({
-    status: 'ok'
-  });
+  getUserTickets(req.params.index, req.params.size, {
+    target_id: req.params.target_id,
+    type: req.params.type,
+    start_date: req.params.start_date,
+    end_date: req.params.end_date,
+    start_priority: req.params.start_priority,
+    end_priority: req.params.end_priority,
+    target_server: req.params.target_server
+  }).then(tickets => {
+    res.json({
+      status: 'ok',
+      tickets: tickets.map(ticket => ticket.toJson())
+    })
+  }).catch(() => {
+    res.json({
+      status: 'error'
+    })
+  })
 });
