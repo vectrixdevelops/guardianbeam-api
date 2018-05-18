@@ -204,9 +204,9 @@ app.get('/logout', function (req, res, next) {
 //           SLACK INTEGRATION
 // # ----------------------------------- #
 
-app.post('/auth/slack', passport.authorize('slack'));
+app.get('/auth/slack', passport.authorize('slack'));
 
-app.post('/auth/slack/callback',
+app.get('/auth/slack/callback',
   passport.authorize('slack', { failureRedirect: '/login' }),
   (req, res) => {
     return res.json({ token: jwt.sign({ id: req.id, displayName: req.displayName }, secret) });
@@ -283,3 +283,7 @@ app.get('/report/list', (req, res) => {
     })
   })
 });
+
+app.listen(8080, () => {
+  console.log('app: ready')
+})
