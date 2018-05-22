@@ -158,6 +158,24 @@ var addLabel = ({ ticket_id, tag_id, name, priority, reason }) => {
 
 // GETTERS
 
+var getTickets(index, amount, { type, start_date, end_date, start_priority, end_priority, target_server }) => {
+  return Ticket.findAll({ where: {
+      type: type,
+      createdAt: {
+        [Op.lt]: new Date(end_date),
+        [Op.gt]: new Date(start_date)
+      },
+      priority: {
+        [Op.lt]: new Date(end_priority),
+        [Op.gt]: new Date(start_date)
+      },
+      target_server: target_server
+    },
+    offset: index,
+    limit: amount
+  });
+};
+
 var getUser = ({ target_id }) => {
   return User.findOne({ where: { id: issuer_id } });
 };
@@ -264,8 +282,7 @@ app.post('/report/create', (req, res) => {
 })
 
 app.get('/report/list', (req, res) => {
-  getUserTickets(req.params.index, req.params.size, {
-    target_id: req.params.target_id,
+  getTickets(req.params.index, req.params.size, {
     type: req.params.type,
     start_date: req.params.start_date,
     end_date: req.params.end_date,
