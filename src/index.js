@@ -158,7 +158,7 @@ var addLabel = ({ ticket_id, tag_id, name, priority, reason }) => {
 
 // GETTERS
 
-var getTickets(index, amount, { type, start_date, end_date, start_priority, end_priority, target_server }) => {
+var getTickets = (index, amount, { type, start_date, end_date, start_priority, end_priority, target_server }) => {
   return Ticket.findAll({ where: {
       type: type,
       createdAt: {
